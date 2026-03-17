@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Collections.Immutable;
+using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Utils;
 
@@ -13,21 +14,29 @@ internal abstract class BaseInstaller<TPassthrough> : IInstaller
     public string PackageName { get; }
     public int? PackageFsHash { get; }
 
-    public IReadOnlyCollection<string> PackageDependencies { get; }
+    public IReadOnlySet<string> PackageDependencies { get; }
 
     public IInstallation.State Installed { get; private set; }
-    public IReadOnlyCollection<RootedPath> InstalledFiles => installedFiles;
+    public IReadOnlySet<RootedPath> InstalledFiles => installedFiles;
 
-    private readonly List<RootedPath> installedFiles = new();
+    protected readonly IFileSystem FileSystem;
+
+    private readonly HashSet<RootedPath> installedFiles = new();
 
     protected BaseInstaller(string packageName, int? packageFsHash)
-        : this(packageName, packageFsHash, Array.Empty<string>())
+        : this(packageName, packageFsHash, ImmutableHashSet<string>.Empty)
+    {
+    }
+
+    protected BaseInstaller(string packageName, int? packageFsHash, IReadOnlySet<string> packageDependencies) :
+        this(new FileSystem(), packageName, packageFsHash, packageDependencies)
     {
     }
 
     // A package cannot currently specify dependencies.
-    protected BaseInstaller(string packageName, int? packageFsHash, IReadOnlyCollection<string> packageDependencies)
+    protected BaseInstaller(IFileSystem fs, string packageName, int? packageFsHash, IReadOnlySet<string> packageDependencies)
     {
+        FileSystem = fs;
         PackageName = packageName;
         PackageFsHash = packageFsHash;
         PackageDependencies = packageDependencies;
@@ -45,15 +54,14 @@ internal abstract class BaseInstaller<TPassthrough> : IInstaller
         {
             var (destPath, removeFile) = NeedsRemoving(destination(pathInPackage));
 
-            if (callbacks.Accept(destPath))
+            callbacks.Wrap(() =>
             {
-                callbacks.Before(destPath);
                 try
                 {
                     backupStrategy.PerformBackup(destPath);
                     if (!removeFile)
                     {
-                        Directory.GetParent(destPath.Full)?.Create();
+                        FileSystem.Directory.GetParent(destPath.Full)?.Create();
                         InstallFile(destPath, context);
                     }
                 }
@@ -62,12 +70,7 @@ internal abstract class BaseInstaller<TPassthrough> : IInstaller
                     installedFiles.Add(destPath);
                 }
                 backupStrategy.AfterInstall(destPath);
-                callbacks.After(destPath);
-            }
-            else
-            {
-                callbacks.NotAccepted(destPath);
-            }
+            }, destPath);
         });
 
         Installed = IInstallation.State.Installed;

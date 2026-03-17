@@ -1,5 +1,5 @@
 ﻿using System.Collections.Immutable;
-using Core.Games;
+using System.IO.Abstractions;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
 
@@ -7,6 +7,13 @@ namespace Core.Mods.Installation.Installers;
 
 public class BootfilesInstaller : BaseModInstaller
 {
+    public new interface IConfig : BaseModInstaller.IConfig
+    {
+        string BootfilesVehicleListDir { get; }
+        string BootfilesTrackListDir { get; }
+        string BootfilesDrivelineDir { get; }
+    }
+
     public interface IEventHandler
     {
         void PostProcessingNotRequired();
@@ -18,78 +25,102 @@ public class BootfilesInstaller : BaseModInstaller
         void PostProcessingEnd();
     }
 
-    private const string GeneratedBootfilesPackageName = $"{ModPackagesUpdater.BootfilesPrefix}_generated";
-
-    internal const string VehicleListRelativeDir = "vehicles";
-    internal static readonly string TrackListRelativeDir = Path.Combine("tracks", "_data");
-    internal static readonly string DrivelineRelativeDir = Path.Combine(VehicleListRelativeDir, "physics", "driveline");
-
+    private readonly RootedPath gameInstallationPath;
+    private readonly IBootfilesNaming bootfilesNaming;
     private readonly IEventHandler eventHandler;
 
-    public BootfilesInstaller(IInstaller? bootfilesPackageInstaller,  IGame game, ITempDir tempDir, IEventHandler eventHandler, IConfig config) :
-        base(PackageOrGenerated(bootfilesPackageInstaller, game, tempDir), game, tempDir, config)
+    public BootfilesInstaller(IInstaller? bootfilesPackageInstaller, string tempDir, IConfig config,
+        string gameInstallationDir, IBootfilesNaming bootfilesNaming, IEventHandler eventHandler) :
+        this(new FileSystem(), bootfilesPackageInstaller, tempDir, config,
+            gameInstallationDir, bootfilesNaming, eventHandler)
     {
+    }
+
+    public BootfilesInstaller(IFileSystem fileSystem, IInstaller? bootfilesPackageInstaller, string tempDir,
+        IConfig config, string gameInstallationDir, IBootfilesNaming bootfilesNaming, IEventHandler eventHandler) :
+        base(fileSystem, PackageOrGenerated(bootfilesPackageInstaller, gameInstallationDir, tempDir, bootfilesNaming),
+            tempDir, config)
+    {
+        gameInstallationPath = new RootedPath(gameInstallationDir);
+        VehicleListDir = gameInstallationPath.SubPath(config.BootfilesVehicleListDir);
+        TrackListDir = gameInstallationPath.SubPath(config.BootfilesTrackListDir);
+        DrivelineDir = gameInstallationPath.SubPath(config.BootfilesDrivelineDir);
+        this.bootfilesNaming = bootfilesNaming;
         this.eventHandler = eventHandler;
     }
 
-    private static IInstaller PackageOrGenerated(IInstaller? bootfilesPackageInstaller, IGame game, ITempDir tempDir) =>
-        bootfilesPackageInstaller ?? new GeneratedBootfilesInstaller(GeneratedBootfilesPackageName, game, tempDir);
+    private static IInstaller PackageOrGenerated(IInstaller? bootfilesPackageInstaller,
+        string gameInstallationDirectory, string tempDir, IBootfilesNaming bootfilesNaming) =>
+        bootfilesPackageInstaller ?? new GeneratedBootfilesInstaller(bootfilesNaming.GeneratedBootfilesName,
+            gameInstallationDirectory, tempDir);
 
     // Bootfiles cannot have dependencies.
-    public override IReadOnlyCollection<string> PackageDependencies => Array.Empty<string>();
+    public override IReadOnlySet<string> PackageDependencies => ImmutableHashSet<string>.Empty;
 
-    protected override void Install(Action innerInstall)
+    protected override void Install(Action innerInstall, ProcessingCallbacks<RootedPath> callbacks)
     {
-        var modConfigs = CollectModConfigs();
-        if (modConfigs.Any(c => c.Any()))
-        {
-            eventHandler.PostProcessingStart();
-            var packageNameIfNotGenerated = PackageName != GeneratedBootfilesPackageName ? PackageName : null;
-            eventHandler.ExtractingBootfiles(packageNameIfNotGenerated);
-            innerInstall();
-            eventHandler.PostProcessingVehicles();
-            PostProcessor.AppendCrdFileEntries(new RootedPath(Game.InstallationDirectory, VehicleListRelativeDir),
-                modConfigs.SelectMany(c => c.CrdFileEntries), WrapInComments);
-            eventHandler.PostProcessingTracks();
-            PostProcessor.AppendTrdFileEntries(new RootedPath(Game.InstallationDirectory, TrackListRelativeDir),
-                modConfigs.SelectMany(c => c.TrdFileEntries), WrapInComments);
-            eventHandler.PostProcessingDrivelines();
-            PostProcessor.AppendDrivelineRecords(new RootedPath(Game.InstallationDirectory, DrivelineRelativeDir),
-                modConfigs.SelectMany(c => c.DrivelineRecords), WrapInComments);
-            eventHandler.PostProcessingEnd();
-        }
-        else
+        var modConfigs = CollectModConfig();
+        if (modConfigs.None())
         {
             eventHandler.PostProcessingNotRequired();
+            return;
         }
+
+        eventHandler.PostProcessingStart();
+        var packageNameIfNotGenerated = bootfilesNaming.IsGeneratedBootfiles(PackageName) ? PackageName : null;
+        eventHandler.ExtractingBootfiles(packageNameIfNotGenerated);
+
+        innerInstall();
+
+        if (modConfigs.CrdFileEntries.Count > 0)
+        {
+            eventHandler.PostProcessingVehicles();
+            AppendCrdFileEntries(modConfigs.CrdFileEntries, callbacks);
+        }
+        if (modConfigs.TrdFileEntries.Count > 0)
+        {
+            eventHandler.PostProcessingTracks();
+            AppendTrdFileEntries(modConfigs.TrdFileEntries, callbacks);
+        }
+        if (modConfigs.DrivelineRecords.Count > 0)
+        {
+            eventHandler.PostProcessingDrivelines();
+            InsertDrivelineRecords(modConfigs.DrivelineRecords, callbacks);
+        }
+        eventHandler.PostProcessingEnd();
     }
 
-    private static string WrapInComments(string content)
-    {
-        return $"{Environment.NewLine}### BEGIN AMS2CM{Environment.NewLine}{content}{Environment.NewLine}### END AMS2CM{Environment.NewLine}";
-    }
+    protected override RootedPath VehicleListDir { get; }
 
-    private IReadOnlyList<ConfigEntries> CollectModConfigs()
+    protected override RootedPath TrackListDir { get; }
+
+    protected override RootedPath DrivelineDir { get; }
+
+    protected override string WrapConfigBlock(string configBlock) =>
+        $"{Environment.NewLine}### BEGIN AMS2CM{Environment.NewLine}{configBlock}{Environment.NewLine}### END AMS2CM{Environment.NewLine}";
+
+    private ConfigEntries CollectModConfig()
     {
-        var modsGamePath = Path.Combine(Game.InstallationDirectory, PostProcessor.GameSupportedModDirectory);
-        var directoryInfo = new DirectoryInfo(modsGamePath);
+        var modsGamePath = gameInstallationPath.SubPath(GameSupportedModRelativeDir);
+        var directoryInfo = FileSystem.DirectoryInfo.New(modsGamePath.Full);
         if (!directoryInfo.Exists)
-            return Array.Empty<ConfigEntries>();
+            return ConfigEntries.Empty;
+
         return directoryInfo.GetDirectories("*").Select(modDir =>
-            modDir.EnumerateFiles($"{modDir.Name}.xml").Any() ?
-                ConfigEntries.Empty :
-                new ConfigEntries
-                (
-                    FileLinesOrEmpty(modDir, PostProcessor.VehicleListFileName),
-                    FileLinesOrEmpty(modDir, PostProcessor.TrackListFileName),
-                    FileLinesOrEmpty(modDir, PostProcessor.DrivelineFileName)
-                )
-        ).ToImmutableList();
+                modDir.EnumerateFiles($"{modDir.Name}.xml").Any()
+                    ? ConfigEntries.Empty
+                    : new ConfigEntries
+                    (
+                        FileLinesOrEmpty(modDir, VehicleListFileName),
+                        FileLinesOrEmpty(modDir, TrackListFileName),
+                        FileLinesOrEmpty(modDir, DrivelineFileName)
+                    )
+                ).Aggregate(ConfigEntries.Empty, ConfigEntries.Combine);
     }
 
-    private static string[] FileLinesOrEmpty(DirectoryInfo parent, string fileName)
+    private string[] FileLinesOrEmpty(IDirectoryInfo parent, string fileName)
     {
         var filePath = Path.Combine(parent.FullName, fileName);
-        return File.Exists(filePath) ? File.ReadAllLines(filePath) : Array.Empty<string>();
+        return FileSystem.File.Exists(filePath) ? FileSystem.File.ReadAllLines(filePath) : Array.Empty<string>();
     }
 }

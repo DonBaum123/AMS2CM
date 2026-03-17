@@ -1,7 +1,6 @@
 using Core.API;
 using Core.Games;
 using Core.IO;
-using Core.Mods.Installation;
 using Core.Mods.Installation.Installers;
 using Core.Packages.Installation;
 using Core.Packages.Installation.Installers;
@@ -14,21 +13,26 @@ using LibArchive.Net;
 
 namespace Core.Tests.API;
 
-public class ModManagerIntegrationTest : AbstractFilesystemTest
+[IntegrationTest]
+public class ModManagerTest : AbstractFilesystemTest
 {
     #region Initialisation
 
+    private const string BootfilesPrefix = "BP";
     private const string DirAtRoot = "DirAtRoot";
     private const string FileExcludedFromInstall = "Excluded";
+    private static readonly string GameSupportedModDirectory = Path.Combine("Mod", "Directory");
+
+    private static readonly ModInstallConfig DefaultModInstallConfig = new();
 
     private static readonly string VehicleListRelativePath =
-        Path.Combine(BootfilesInstaller.VehicleListRelativeDir, PostProcessor.VehicleListFileName);
+        Path.Combine(DefaultModInstallConfig.BootfilesVehicleListDir, DefaultModInstallConfig.VehicleListFileName);
 
     private static readonly string TrackListRelativePath =
-        Path.Combine(BootfilesInstaller.TrackListRelativeDir, PostProcessor.TrackListFileName);
+        Path.Combine(DefaultModInstallConfig.BootfilesTrackListDir, DefaultModInstallConfig.TrackListFileName);
 
     private static readonly string DrivelineRelativePath =
-        Path.Combine(BootfilesInstaller.DrivelineRelativeDir, PostProcessor.DrivelineFileName);
+        Path.Combine(DefaultModInstallConfig.BootfilesDrivelineDir, DefaultModInstallConfig.DrivelineFileName);
 
     private static readonly DateTime PastDate = DateTime.Today.AddDays(-1);
 
@@ -44,9 +48,9 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
 
     private readonly InMemoryStatePersistence persistedState;
 
-    private readonly ModManager modManager;
+    private readonly IModManager modManager;
 
-    public ModManagerIntegrationTest()
+    public ModManagerTest()
     {
         gameDir = TestDir.CreateSubdirectory("Game");
         modsDir = TestDir.CreateSubdirectory("Packages");
@@ -56,18 +60,19 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
         persistedState = new InMemoryStatePersistence();
         var modInstallConfig = new ModInstallConfig
         {
-            DirsAtRoot = [DirAtRoot], ExcludedFromInstall = [$"**\\{FileExcludedFromInstall}"]
+            BootfilesPrefix = BootfilesPrefix,
+            DirsAtRoot = [DirAtRoot],
+            ExcludedFromInstall = [$"**\\{FileExcludedFromInstall}"],
+            GameSupportedModDir = GameSupportedModDirectory
         };
 
-        var packagesUpdater = Init.CreatePackagesUpdater(modInstallConfig, gameMock.Object, tempDir);
-
-        modManager = new ModManager(
+        modManager = Init.CreateModManager(
             gameMock.Object,
             modRepositoryMock.Object,
-            packagesUpdater,
             persistedState,
             safeFileDeleteMock.Object,
-            tempDir);
+            tempDir,
+            modInstallConfig);
 
         gameMock.Setup(m => m.InstallationDirectory).Returns(gameDir.FullName);
     }
@@ -207,17 +212,17 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     {
         persistedState.InitModInstallationState(new Dictionary<string, PackageInstallationState>
         {
-            [$"{ModPackagesUpdater.BootfilesPrefix}_IU"] = new(
+            [$"{BootfilesPrefix}_IU"] = new(
                 Time: PastDate, FsHash: null, Partial: false,
                 Dependencies: [],
                 Files: [],
                 ShadowedBy: []),
-            [$"{ModPackagesUpdater.BootfilesPrefix}_IE"] = new(
+            [$"{BootfilesPrefix}_IE"] = new(
                 Time: PastDate, FsHash: null, Partial: false,
                 Dependencies: [],
                 Files: [],
                 ShadowedBy: []),
-            [$"{ModPackagesUpdater.BootfilesPrefix}_ID"] = new(
+            [$"{BootfilesPrefix}_ID"] = new(
                 Time: PastDate, FsHash: null, Partial: false,
                 Dependencies: [],
                 Files: [],
@@ -225,21 +230,21 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
         });
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns(
         [
-            new Package(Name: $"{ModPackagesUpdater.BootfilesPrefix}_IE", FullPath: "ie/path", Enabled: true, FsHash: null),
-            new Package(Name: $"{ModPackagesUpdater.BootfilesPrefix}_UE", FullPath: "ue/path", Enabled: true, FsHash: null)
+            new Package(Name: $"{BootfilesPrefix}_IE", FullPath: "ie/path", Enabled: true, FsHash: null),
+            new Package(Name: $"{BootfilesPrefix}_UE", FullPath: "ue/path", Enabled: true, FsHash: null)
         ]);
         modRepositoryMock.Setup(m => m.ListDisabled()).Returns(
         [
-            new Package(Name: $"{ModPackagesUpdater.BootfilesPrefix}_ID", FullPath: "id/path", Enabled: false, FsHash: null),
-            new Package(Name: $"{ModPackagesUpdater.BootfilesPrefix}_UD", FullPath: "ud/path", Enabled: false, FsHash: null)
+            new Package(Name: $"{BootfilesPrefix}_ID", FullPath: "id/path", Enabled: false, FsHash: null),
+            new Package(Name: $"{BootfilesPrefix}_UD", FullPath: "ud/path", Enabled: false, FsHash: null)
         ]);
 
         modManager.FetchState().Should().BeEquivalentTo(
         [
-            new ModState($"{ModPackagesUpdater.BootfilesPrefix}_IE", "ie/path", IsInstalled: true, IsEnabled: true, IsOutOfDate: true),
-            new ModState($"{ModPackagesUpdater.BootfilesPrefix}_UE", "ue/path", IsInstalled: false, IsEnabled: true, IsOutOfDate: false),
-            new ModState($"{ModPackagesUpdater.BootfilesPrefix}_ID", "id/path", IsInstalled: true, IsEnabled: false, IsOutOfDate: true),
-            new ModState($"{ModPackagesUpdater.BootfilesPrefix}_UD", "ud/path", IsInstalled: false, IsEnabled: false, IsOutOfDate: false),
+            new ModState($"{BootfilesPrefix}_IE", "ie/path", IsInstalled: true, IsEnabled: true, IsOutOfDate: true),
+            new ModState($"{BootfilesPrefix}_UE", "ue/path", IsInstalled: false, IsEnabled: true, IsOutOfDate: false),
+            new ModState($"{BootfilesPrefix}_ID", "id/path", IsInstalled: true, IsEnabled: false, IsOutOfDate: true),
+            new ModState($"{BootfilesPrefix}_UD", "ud/path", IsInstalled: false, IsEnabled: false, IsOutOfDate: false),
         ]);
     }
 
@@ -677,7 +682,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
             CreateModArchive(100, [
                 Path.Combine(DirAtRoot, "Vehicle.crd"),
                 Path.Combine(DirAtRoot, "Track.trd"), // Tracks do not currently work in game
-                Path.Combine(PostProcessor.GameSupportedModDirectory, "Anything")
+                Path.Combine(GameSupportedModDirectory, "Anything")
             ]),
             CreateCustomBootfiles(900),
         ]);
@@ -707,11 +712,11 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
         persistedState.For("Package100").Dependencies.Should().BeEmpty();
 
         var generatedConfigDir = $"Package100_{100:x}";
-        File.ReadAllText(GamePath(PostProcessor.GameSupportedModDirectory, generatedConfigDir,
-            PostProcessor.VehicleListFileName).Full).Should().Contain("Vehicle.crd");
-        File.ReadAllText(GamePath(PostProcessor.GameSupportedModDirectory, generatedConfigDir,
-            PostProcessor.DrivelineFileName).Full).Should().Contain(drivelineRecord);
-        File.Exists(GamePath(PostProcessor.GameSupportedModDirectory, generatedConfigDir, $"{generatedConfigDir}.xml")
+        File.ReadAllText(GamePath(GameSupportedModDirectory, generatedConfigDir,
+            DefaultModInstallConfig.VehicleListFileName).Full).Should().Contain("Vehicle.crd");
+        File.ReadAllText(GamePath(GameSupportedModDirectory, generatedConfigDir,
+            DefaultModInstallConfig.DrivelineFileName).Full).Should().Contain(drivelineRecord);
+        File.Exists(GamePath(GameSupportedModDirectory, generatedConfigDir, $"{generatedConfigDir}.xml")
             .Full).Should().BeTrue();
     }
 
@@ -729,13 +734,13 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
 
         modManager.InstallEnabledMods(eventHandlerMock.Object);
 
-        persistedState.Should().HaveInstalled(["Package100", "__bootfiles900"]);
-        persistedState.For("Package100").Dependencies.Should().Contain("__bootfiles900");
+        persistedState.Should().HaveInstalled(["Package100", $"{BootfilesPrefix}900"]);
+        persistedState.For("Package100").Dependencies.Should().Contain($"{BootfilesPrefix}900");
 
         var generatedConfigDir = $"Package100_{100:x}";
-        File.ReadAllText(GamePath(PostProcessor.GameSupportedModDirectory, generatedConfigDir,
-            PostProcessor.TrackListFileName).Full).Should().Contain("Track.trd");
-        File.Exists(GamePath(PostProcessor.GameSupportedModDirectory, generatedConfigDir, $"{generatedConfigDir}.xml")
+        File.ReadAllText(GamePath(GameSupportedModDirectory, generatedConfigDir,
+            DefaultModInstallConfig.TrackListFileName).Full).Should().Contain("Track.trd");
+        File.Exists(GamePath(GameSupportedModDirectory, generatedConfigDir, $"{generatedConfigDir}.xml")
             .Full).Should().BeFalse();
 
         File.ReadAllText(GamePath(TrackListRelativePath).Full).Should().Contain("Track.trd");
@@ -756,7 +761,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
         //
         //modManager.InstallEnabledMods()
         //
-        //persistedState.Should().HaveInstalled(["Package100", "__bootfiles"]);
+        //persistedState.Should().HaveInstalled(["Package100", $"{BootfilesPrefix}_generated"]);
     }
 
     [Fact]
@@ -770,7 +775,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
 
         modManager.InstallEnabledMods(eventHandlerMock.Object);
 
-        persistedState.Should().HaveInstalled(["Package100", "__bootfiles901"]);
+        persistedState.Should().HaveInstalled(["Package100", $"{BootfilesPrefix}901"]);
     }
 
     #region Utility methods
@@ -782,7 +787,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
         CreateModPackage("Package", fsHash, relativePaths, callback);
 
     private Package CreateCustomBootfiles(int fsHash) =>
-        CreateModPackage(ModPackagesUpdater.BootfilesPrefix, fsHash, [
+        CreateModPackage(BootfilesPrefix, fsHash, [
                 Path.Combine(DirAtRoot, "OrTheyWontBeInstalled"),
                 VehicleListRelativePath,
                 TrackListRelativePath,

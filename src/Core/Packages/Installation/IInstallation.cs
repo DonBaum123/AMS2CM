@@ -2,13 +2,11 @@
 
 namespace Core.Packages.Installation;
 
-public interface IInstallation
+public interface IInstallation : IPackageInfo
 {
-    string PackageName { get; }
-    int? PackageFsHash { get; }
-    IReadOnlyCollection<string> PackageDependencies { get; }
+    IReadOnlySet<string> PackageDependencies { get; }
 
-    IReadOnlyCollection<RootedPath> InstalledFiles { get; }
+    IReadOnlySet<RootedPath> InstalledFiles { get; }
     State Installed { get; }
 
     enum State
