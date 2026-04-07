@@ -1,5 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.IO.Abstractions;
+using Core.Packages;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
 
@@ -18,7 +19,7 @@ public class BootfilesInstaller : BaseModInstaller
     {
         void PostProcessingNotRequired();
         void PostProcessingStart();
-        void ExtractingBootfiles(string? packageName);
+        void ExtractingBootfiles(IPackageInfo? bootfilesPackage);
         void PostProcessingVehicles();
         void PostProcessingTracks();
         void PostProcessingDrivelines();
@@ -67,8 +68,8 @@ public class BootfilesInstaller : BaseModInstaller
         }
 
         eventHandler.PostProcessingStart();
-        var packageNameIfNotGenerated = bootfilesNaming.IsGeneratedBootfiles(PackageName) ? PackageName : null;
-        eventHandler.ExtractingBootfiles(packageNameIfNotGenerated);
+        var packageIfNotgenerated = bootfilesNaming.IsGeneratedBootfiles(PackageName) ? this : null;
+        eventHandler.ExtractingBootfiles(packageIfNotgenerated);
 
         innerInstall();
 

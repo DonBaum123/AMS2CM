@@ -1,4 +1,5 @@
-﻿using Core.Utils;
+﻿using Core.Packages;
+using Core.Utils;
 
 namespace Core.API;
 
@@ -11,22 +12,15 @@ public abstract class BaseEventLogger : IEventHandler
     public abstract void ProgressUpdate(IPercent? progress);
     protected abstract void LogMessage(string message);
 
-    public void InstallNoPackages() =>
-        LogMessage($"No mod archives to install");
-    public void InstallStart() =>
-        LogMessage("Installing mods:");
-    public void InstallCurrent(string packageName) =>
-        LogMessage($"- {packageName}");
-    public void InstallEnd()
-    {
-    }
+    public void ProcessingPackage(IPackageInfo package) =>
+        LogMessage($"- {package.PackageName}");
 
     public void PostProcessingNotRequired() =>
         LogMessage("Post-processing not required");
     public void PostProcessingStart() =>
         LogMessage("Post-processing:");
-    public void ExtractingBootfiles(string? packageName) =>
-        LogMessage($"Extracting bootfiles from {packageName ?? "game"}");
+    public void ExtractingBootfiles(IPackageInfo? bootfilesPackage) =>
+        LogMessage($"Extracting bootfiles from {bootfilesPackage?.PackageName ?? "game"}");
     public void PostProcessingVehicles() =>
         LogMessage("- Appending crd file entries");
     public void PostProcessingTracks() =>
@@ -34,16 +28,6 @@ public abstract class BaseEventLogger : IEventHandler
     public void PostProcessingDrivelines() =>
         LogMessage("- Appending driveline records");
     public void PostProcessingEnd()
-    {
-    }
-
-    public void UninstallNoPackages() =>
-        LogMessage("No previously installed mods found. Skipping uninstall phase.");
-    public void UninstallStart() =>
-        LogMessage($"Uninstalling mods:");
-    public void UninstallCurrent(string packageName) =>
-        LogMessage($"- {packageName}");
-    public void UninstallEnd()
     {
     }
 

@@ -1,7 +1,6 @@
 using Core.API;
 using Core.Games;
 using Core.IO;
-using Core.Mods.Installation.Installers;
 using Core.Packages.Installation;
 using Core.Packages.Installation.Installers;
 using Core.Packages.Repository;

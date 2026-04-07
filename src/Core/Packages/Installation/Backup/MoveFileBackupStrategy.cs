@@ -20,7 +20,8 @@ public class MoveFileBackupStrategy : IBackupStrategy
     {
     }
 
-    internal MoveFileBackupStrategy(IFileSystem fs, IBackupFileNaming backupFileNaming, IBackupEventHandler? eventHandler)
+    internal MoveFileBackupStrategy(IFileSystem fs, IBackupFileNaming backupFileNaming,
+        IBackupEventHandler? eventHandler)
     {
         this.fs = fs;
         this.backupFileNaming = backupFileNaming;

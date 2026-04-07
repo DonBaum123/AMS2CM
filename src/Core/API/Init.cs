@@ -34,8 +34,7 @@ public static class Init
         ITempDir tempDir,
         ModInstallConfig modInstallConfig)
     {
-        var backupStrategyProvider = new SkipUpdatedBackupStrategy.Provider<IEventHandler>(
-            new SuffixBackupStrategy.Provider<PackageInstallationState, IEventHandler>());
+        var backupStrategyProvider = new SuffixBackupStrategy.Provider<IEventHandler>();
         var bootfilesNaming = new PrefixBootfilesNaming(modInstallConfig);
         var modInstallerFactory = new ModInstallerFactory<ModInstallConfig>(game, tempDir, bootfilesNaming, modInstallConfig);
         var modPackagesUpdater = new ModPackagesUpdater<IEventHandler>(

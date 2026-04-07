@@ -8,28 +8,12 @@ namespace Core.Packages.Installation.Backup;
 /// </summary>
 internal class SkipUpdatedBackupStrategy : IBackupStrategy
 {
-    internal class Provider<TEventHandler> : IBackupStrategyProvider<PackageInstallationState, TEventHandler>
-        where TEventHandler : IBackupEventHandler
-    {
-        private readonly IBackupStrategyProvider<PackageInstallationState, TEventHandler> baseProvider;
-
-        public Provider(IBackupStrategyProvider<PackageInstallationState, TEventHandler> baseProvider)
-        {
-            this.baseProvider = baseProvider;
-        }
-
-        public IBackupStrategy BackupStrategy(PackageInstallationState? state, TEventHandler? eventHandler) {
-            var baseStrategy = baseProvider.BackupStrategy(state, eventHandler);
-            return new SkipUpdatedBackupStrategy(baseStrategy, state?.Time, eventHandler);
-        }
-    }
-
     private readonly IFileSystem fs;
     private readonly IBackupStrategy inner;
     private readonly DateTime? backupTimeUtc;
     private readonly IBackupEventHandler? eventHandler;
 
-    private SkipUpdatedBackupStrategy(
+    public SkipUpdatedBackupStrategy(
         IBackupStrategy backupStrategy,
         DateTime? backupTimeUtc,
         IBackupEventHandler? eventHandler) :

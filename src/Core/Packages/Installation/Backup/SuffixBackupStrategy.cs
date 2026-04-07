@@ -2,10 +2,10 @@
 
 public class SuffixBackupStrategy : MoveFileBackupStrategy
 {
-    internal class Provider<TState, TEventHandler> : IBackupStrategyProvider<TState, TEventHandler>
+    internal class Provider<TEventHandler> : IBackupStrategyProvider<TEventHandler>
         where TEventHandler : IBackupEventHandler
     {
-        public IBackupStrategy BackupStrategy(TState? _, TEventHandler? eventHandler) =>
+        public IBackupStrategy BackupStrategy(TEventHandler? eventHandler) =>
             new SuffixBackupStrategy(eventHandler);
     }
 

@@ -1,6 +1,6 @@
 ﻿namespace Core.Packages.Installation.Backup;
 
-public interface IBackupStrategyProvider<in TState, in TEventHandler>
+public interface IBackupStrategyProvider<in TEventHandler>
 {
-    IBackupStrategy BackupStrategy(TState? state, TEventHandler? eventHandler);
+    IBackupStrategy BackupStrategy(TEventHandler? eventHandler);
 }

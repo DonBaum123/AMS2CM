@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Core.Packages;
 using Core.Packages.Installation;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
@@ -23,7 +24,7 @@ public class PackagesUpdaterTest : PackagesUpdaterTestBase<PackagesUpdater.IEven
 
     protected override IPackagesUpdater<PackagesUpdater.IEventHandler> NewPackagesUpdater(
         IInstallerFactory installerFactory,
-        IBackupStrategyProvider<PackageInstallationState, PackagesUpdater.IEventHandler> backupStrategyProvider,
+        IBackupStrategyProvider<PackagesUpdater.IEventHandler> backupStrategyProvider,
         TimeProvider timeProvider) =>
         new PackagesUpdater<PackagesUpdater.IEventHandler>(installerFactory, backupStrategyProvider, timeProvider);
 
@@ -90,10 +91,8 @@ public class PackagesUpdaterTest : PackagesUpdaterTestBase<PackagesUpdater.IEven
         BackupStrategyMock.Verify(m => m.AfterInstall(DestinationPath("AF")));
         BackupStrategyMock.VerifyNoOtherCalls();
 
-        EventHandlerMock.Verify(m => m.UninstallNoPackages());
-        EventHandlerMock.Verify(m => m.InstallStart());
-        EventHandlerMock.Verify(m => m.InstallCurrent("A"));
-        EventHandlerMock.Verify(m => m.InstallEnd());
+        EventHandlerMock.Verify(m => m.ProcessingPackage(It.Is<IPackageInfo>(p =>
+            p.PackageName == "A" && p.PackageFsHash == 42)));
         EventHandlerMock.Verify(m => m.ProgressUpdate(It.IsAny<IPercent>()));
         EventHandlerMock.VerifyNoOtherCalls();
     }
@@ -119,10 +118,8 @@ public class PackagesUpdaterTest : PackagesUpdaterTestBase<PackagesUpdater.IEven
         BackupStrategyMock.Verify(m => m.RestoreBackup(DestinationPath("AF")));
         BackupStrategyMock.VerifyNoOtherCalls();
 
-        EventHandlerMock.Verify(m => m.UninstallStart());
-        EventHandlerMock.Verify(m => m.UninstallCurrent("A"));
-        EventHandlerMock.Verify(m => m.UninstallEnd());
-        EventHandlerMock.Verify(m => m.InstallNoPackages());
+        EventHandlerMock.Verify(m => m.ProcessingPackage(It.Is<IPackageInfo>(p =>
+            p.PackageName == "A" && p.PackageFsHash == 42)));
         EventHandlerMock.Verify(m => m.ProgressUpdate(It.IsAny<IPercent>()));
         EventHandlerMock.VerifyNoOtherCalls();
     }
@@ -438,14 +435,14 @@ public abstract class PackagesUpdaterTestBase<TEventHandler> where TEventHandler
 
     protected abstract IPackagesUpdater<TEventHandler> NewPackagesUpdater(
         IInstallerFactory installerFactory,
-        IBackupStrategyProvider<PackageInstallationState, TEventHandler> backupStrategyProvider,
+        IBackupStrategyProvider<TEventHandler> backupStrategy,
         TimeProvider timeProvider);
 
     protected void Apply(IInstaller[] installers)
     {
         var packages = installers.Select(i => new Package(i.PackageName, "", true, null));
-        var backupStrategyProviderMock = new Mock<IBackupStrategyProvider<PackageInstallationState, TEventHandler>>();
-        backupStrategyProviderMock.Setup(m => m.BackupStrategy(It.IsAny<PackageInstallationState>(), It.IsAny<TEventHandler>()))
+        var backupStrategyProviderMock = new Mock<IBackupStrategyProvider<TEventHandler>>();
+        backupStrategyProviderMock.Setup(m => m.BackupStrategy(It.IsAny<TEventHandler>()))
             .Returns(BackupStrategyMock.Object);
         var packagesUpdater = NewPackagesUpdater(
             new InstallerForPackage(installers),

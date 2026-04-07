@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Core.Mods;
 using Core.Mods.Installation;
 using Core.Mods.Installation.Installers;
+using Core.Packages;
 using Core.Packages.Installation;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
@@ -43,7 +44,7 @@ public class ModPackagesUpdaterTest : PackagesUpdaterTestBase<PackagesUpdater.IE
 
     protected override IPackagesUpdater<PackagesUpdater.IEventHandler> NewPackagesUpdater(
         IInstallerFactory installerFactory,
-        IBackupStrategyProvider<PackageInstallationState, PackagesUpdater.IEventHandler> backupStrategyProvider,
+        IBackupStrategyProvider<PackagesUpdater.IEventHandler> backupStrategyProvider,
         TimeProvider timeProvider)
     {
         var bootfilesNamingMock = new Mock<IBootfilesNaming>();
@@ -57,9 +58,9 @@ public class ModPackagesUpdaterTest : PackagesUpdaterTestBase<PackagesUpdater.IE
     [Fact]
     public void Apply_AlwaysInstallsBootfilesPackage()
     {
-        var packages = new List<string>();
+        var packages = new List<IPackageInfo>();
         var progress = new List<double>();
-        EventHandlerMock.Setup(m => m.InstallCurrent(It.IsAny<string>())).Callback<string>(packages.Add);
+        EventHandlerMock.Setup(m => m.ProcessingPackage(It.IsAny<IPackageInfo>())).Callback<IPackageInfo>(packages.Add);
         EventHandlerMock.Setup(m => m.ProgressUpdate(It.IsAny<IPercent>()))
             .Callback<IPercent>(p => progress.Add(p.Percent));
 
@@ -72,16 +73,16 @@ public class ModPackagesUpdaterTest : PackagesUpdaterTestBase<PackagesUpdater.IE
 
         InstallationState.Should().BeEmpty();
 
-        packages.Should().Equal("(I1)", "(I2)", BootfilesPackageName);
+        packages.Select(p => p.PackageName).Should().Equal("(I1)", "(I2)", BootfilesPackageName);
         progress.Should().Equal(0.25, 0.5, 0.75, 1.0);
     }
 
     [Fact]
     public void Apply_AlwaysInstallsGeneratedBootfiles()
     {
-        var packages = new List<string>();
+        var packages = new List<IPackageInfo>();
         var progress = new List<double>();
-        EventHandlerMock.Setup(m => m.InstallCurrent(It.IsAny<string>())).Callback<string>(packages.Add);
+        EventHandlerMock.Setup(m => m.ProcessingPackage(It.IsAny<IPackageInfo>())).Callback<IPackageInfo>(packages.Add);
         EventHandlerMock.Setup(m => m.ProgressUpdate(It.IsAny<IPercent>()))
             .Callback<IPercent>(p => progress.Add(p.Percent));
 
@@ -92,7 +93,7 @@ public class ModPackagesUpdaterTest : PackagesUpdaterTestBase<PackagesUpdater.IE
 
         InstallationState.Should().BeEmpty();
 
-        packages.Should().Equal(GeneratedBootfilesName);
+        packages.Select(p => p.PackageName).Should().Equal(GeneratedBootfilesName);
         progress.Should().Equal(0.5, 1.0);
     }
 
